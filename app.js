@@ -12,6 +12,7 @@ app.use(express.json());
 
 // importing user context
 const User = require("./model/user");
+const { verifyJwtToken } = require("./helper");
 
 // Register
 app.post("/register", async (req, res) => {
@@ -51,8 +52,14 @@ app.post("/register", async (req, res) => {
     const token = jwt.sign({ user_id: user._id, email }, process.env.TOKEN_KEY, {
       expiresIn: "2h",
     });
+
+    const refreshToken = jwt.sign({ user_id: user._id, email }, process.env.REFRESH_TOKEN_KEY, {
+      expiresIn: "2h",
+    });
     // save user token
     user.token = token;
+    user.refreshToken = refreshToken;
+    console.log("12312312312 user", user);
 
     // return new user
     res.status(201).json(user);
@@ -77,22 +84,52 @@ app.post("/login", async (req, res) => {
     const user = await User.findOne({ email });
 
     if (user && (await bcrypt.compare(password, user.password))) {
-      // Create token
       const token = jwt.sign({ user_id: user._id, email }, process.env.TOKEN_KEY, {
         expiresIn: "2h",
       });
 
-      // save user token
-      user.token = token;
+      const refreshToken = jwt.sign({ user_id: user._id, email }, process.env.REFRESH_TOKEN_KEY, {
+        expiresIn: "2h",
+      });
 
-      // user
+      user.token = token;
+      user.refreshToken = refreshToken;
       res.status(200).json(user);
     }
     res.status(400).send("Invalid Credentials");
   } catch (err) {
     console.log(err);
   }
-  // Our register logic ends here
+});
+
+app.post("/refresh_token", async (req, res) => {
+  const { refreshToken } = req.body;
+  if (refreshToken) {
+    try {
+      const data = await verifyJwtToken(refreshToken, process.env.REFRESH_TOKEN_KEY);
+      console.log("data");
+      const token = jwt.sign(
+        { user_id: data.user_id, email: data.email },
+        process.env.REFRESH_TOKEN_KEY,
+        {
+          expiresIn: "2h",
+        }
+      );
+      const response = {
+        token,
+      };
+      res.status(200).json(response);
+    } catch (err) {
+      console.error(err);
+      res.status(403).json({
+        message: "Invalid refresh token",
+      });
+    }
+  } else {
+    res.status(400).json({
+      message: "Invalid request",
+    });
+  }
 });
 
 app.post("/welcome", auth, (req, res) => {
